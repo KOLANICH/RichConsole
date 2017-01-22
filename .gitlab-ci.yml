@@ -1,0 +1,60 @@
+image: pypy:latest
+#image: registry.gitlab.com/kolanich-subgroups/docker-images/fixed_python:latest
+#image: registry.gitlab.com/kolanich-subgroups/docker-images/python_graal_docker:latest
+
+
+variables:
+  DOCKER_DRIVER: overlay2
+  SAST_ANALYZER_IMAGE_TAG: latest
+  SAST_DISABLE_DIND: "true"
+  SAST_CONFIDENCE_LEVEL: 5
+  CODECLIMATE_VERSION: latest
+
+include:
+  - template: SAST.gitlab-ci.yml
+  - template: Code-Quality.gitlab-ci.yml
+
+build:
+  tags:
+    - shared
+    - linux
+  stage: build
+  variables:
+    GIT_DEPTH: "1"
+    PYTHONUSERBASE: "${CI_PROJECT_DIR}/python_user_packages"
+
+  before_script:
+    - export PATH="$PATH:$PYTHONUSERBASE/bin" # don't move into `variables`
+    - git clone https://github.com/pypa/setuptools.git
+    - cd setuptools
+    - pypy3 ./bootstrap.py
+    - pypy3 ./setup.py bdist_wheel
+    - pip install --upgrade --pre ./dist/*.whl
+    - cd ..
+    - rm -rf ./setuptools
+    - pip3 install --user --pre --upgrade git+https://github.com/pypa/setuptools_scm.git
+    - pip3 install --user --pre --upgrade git+https://github.com/pypa/pip.git git+https://github.com/pypa/wheel.git
+    - pip3 install --user --pre --upgrade pep517
+    - pip3 install --user --upgrade coverage git+https://github.com/coveralls-clients/coveralls-python.git@eba54e4d19e40e3907e5fd516f68e8b4dc9e5a31 git+https://github.com/codecov/codecov-python.git@0743daa83647f12ff31b84d07113d2c24c27b924
+    - pip3 install --pre --upgrade --user git+https://github.com/pytest-dev/pytest.git
+
+  script:
+    - pypy3 -m pep517.build .
+    #- pypy3 ./setup.py bdist_wheel
+    - mv ./dist/*.whl ./dist/RichConsole-0.CI-py3-none-any.whl
+    - pip3 install --user --upgrade --pre "./dist/RichConsole-0.CI-py3-none-any.whl[colorama,plumbum,colored]"
+    - coverage run -a --branch --source=RichConsole -m pytest --junitxml=./rspec.xml ./tests/tests.py
+    - coverage run -a --branch --source=RichConsole -m RichConsole
+    - coveralls || true
+    - codecov || true
+
+  cache:
+    paths:
+      - /usr/local/site-packages
+      - /usr/local/lib/python*/site-packages
+
+  artifacts:
+    paths:
+      - dist
+    reports:
+      junit: ./rspec.xml

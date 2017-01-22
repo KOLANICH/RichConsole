@@ -1,0 +1,3 @@
+https://github.com/tartley/colorama.git
+https://github.com/tomerfiliba/plumbum.git
+https://gitlab.com/dslackw/colored.git
